@@ -79,7 +79,8 @@ class YoloServiceNode(Node):
             response.success = False
             response.message = "YOLO model is not loaded. Check the 'model_path' parameter."
             return response
-
+        
+        start_time = time.perf_counter()
         # TODO 1: Perform YOLO Inference
         results = self.model.predict(
             source=cv_img, 
@@ -87,6 +88,9 @@ class YoloServiceNode(Node):
             verbose=False,
             device='cuda'
         )
+        end_time = time.perf_counter()
+        inference_ms = (end_time - start_time) * 1000.0
+        self.get_logger().info(f"Inference latency: {inference_ms:.2f} ms")
         result = results[0]
         num_detections = len(result.boxes)
         self.get_logger().info(f"YOLO inference completed. Detected {num_detections} objects.")
