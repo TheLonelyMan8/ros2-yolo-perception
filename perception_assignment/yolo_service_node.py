@@ -81,11 +81,60 @@ class YoloServiceNode(Node):
             return response
 
         # TODO 1: Perform YOLO Inference
-
+        results = self.model.predict(
+            source=cv_img, 
+            conf=0.25, 
+            verbose=False,
+            device='cuda'
+        )
+        result = results[0]
+        num_detections = len(result.boxes)
+        self.get_logger().info(f"YOLO inference completed. Detected {num_detections} objects.")
+        
         # TODO 2: Target Filtering Logic
+        target_classes = None 
+        min_confidence = 0.30
+        
+        filtered_boxes = []
+
+        if result.boxes is not None and len(result.boxes) > 0:
+            for box in result.boxes:
+                conf = float(box.conf[0])
+                cls_id = int(box.cls[0])
+                if conf > min_confidence:
+                    filtered_boxes.append(box)
+
+        self.get_logger().info(f"Filtered down to {len(filtered_boxes)} valid target detections.")
 
         # TODO 3: Construct and Publish Detection2DArray Message
+        detection_array = Detection2DArray()
+        detection_array.header.stamp = self.get_clock().now().to_msg()
+        detection_array.header.frame_id = "camera_frame"
 
+        for box in filtered_boxes:
+            det = Detection2D()
+            
+            # Extract bounding box center (x, y) and size (w, h)
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            det.bbox.center.position.x = float((x1 + x2) / 2.0)
+            det.bbox.center.position.y = float((y1 + y2) / 2.0)
+            det.bbox.size_x = float(x2 - x1)
+            det.bbox.size_y = float(y2 - y1)
+
+            # Set Hypothesis (Class ID + Score)
+            hypothesis = ObjectHypothesisWithPose()
+            hypothesis.hypothesis.class_id = str(int(box.cls[0]))
+            hypothesis.hypothesis.score = float(box.conf[0])
+            det.results.append(hypothesis)
+
+            detection_array.detections.append(det)
+
+        # Publish result to /yolo/detections topic
+        self.pub_detections.publish(detection_array)
+
+        response.success = True
+        response.message = f"Successfully published {len(filtered_boxes)} detections."
+        return response
 
 
 def main(args=None):
